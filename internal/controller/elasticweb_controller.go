@@ -83,47 +83,48 @@ func (r *ElasticWebReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 	deployment := &appsv1.Deployment{}
 	err := r.Get(ctx, req.NamespacedName, deployment)
-	if err != nil {
+	if err != nil {  // 如果出错了，则处理不同的错误
 		if errors.IsNotFound(err) { // 如果没找到 ，则需要创建
 			logger.Info("4. deployment not exists")
-			if elasticWeb.Spec.TotalQPS < 1 {
+			if elasticWeb.Spec.TotalQPS < 1 {  // 如果qps为0，说明没有请求，则不需要创建deployment
 				logger.Info("5.1 not need deployment")
 				return ctrl.Result{}, nil
 			}
 
-			if err := createServiceIfNotExists(ctx, r, elasticWeb, req); err != nil {
+			if err := createServiceIfNotExists(ctx, r, elasticWeb, req); err != nil { // 创建deployment之前，先创建service
 				logger.Error(err, "5.2 error")
 				return ctrl.Result{}, nil
 			}
 
-			if err := createDeployment(ctx, r, elasticWeb); err != nil {
+			if err := createDeployment(ctx, r, elasticWeb); err != nil {  // 创建deployment
 				logger.Error(err, "5.3 error")
 				return ctrl.Result{}, nil
 			}
 
-			if err := updateStatus(ctx, r, elasticWeb); err != nil {
+			if err := updateStatus(ctx, r, elasticWeb); err != nil { // 更新elasticweb的状态
 				logger.Error(err, "5.4 error")
 				return ctrl.Result{}, err
 			}
 			return ctrl.Result{}, nil
-		} else {
+		} else {  // 如果不是没找到，而是其他错误则返回错误
 			logger.Error(err, "7. error")
 			return ctrl.Result{}, err
 		}
 	}
 
+	// 如果没出错，说明deployment已经有了，则进行调和
 	expectReplicas := getExpectReplicas(elasticWeb)
 	realReplicas := deployment.Spec.Replicas
 	logger.Info("9. expectReplicas [%d], realReplicas [%d]", expectReplicas, realReplicas)
 
-	if expectReplicas != *realReplicas {
+	if expectReplicas != *realReplicas { // 如果真实副本数和 期望的副本数不一致，则更新deployment
 		logger.Info("11. update deployment's Replicas")
 		deployment.Spec.Replicas = &expectReplicas
 		if err := r.Update(ctx, deployment); err != nil {
 			return ctrl.Result{}, err
 		}
 
-		logger.Info("13. update status")
+		logger.Info("13. update status")  // 更新完deployment之后，更新elasticweb的状态，主要是更新其中的realQPS
 		if err := updateStatus(ctx, r, elasticWeb); err != nil {
 			logger.Error(err, "14. update status error")
 			return ctrl.Result{}, err
@@ -140,7 +141,8 @@ func (r *ElasticWebReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(r)
 }
 
-func getExpectReplicas(elasticWeb *elasticwebv1.ElasticWeb) int32 {
+
+func getExpectReplicas(elasticWeb *elasticwebv1.ElasticWeb) int32 {  // 用于获取期望副本数量值
 	singleQPS := elasticWeb.Spec.SinglePodQPS
 	totalQPS := elasticWeb.Spec.TotalQPS
 
@@ -222,10 +224,9 @@ func createDeployment(ctx context.Context, r *ElasticWebReconciler, elasticWeb *
 }
 
 func createServiceIfNotExists(ctx context.Context, r *ElasticWebReconciler, elasticWeb *elasticwebv1.ElasticWeb, req ctrl.Request) error {
-
 	service := &corev1.Service{}
-	if err := r.Get(ctx, req.NamespacedName, service); err != nil {
-		if errors.IsNotFound(err) {
+	if err := r.Get(ctx, req.NamespacedName, service); err != nil {  //查询时有错误，要处理
+		if errors.IsNotFound(err) { // 如果因为没找到sercvice报错，则需要创建service
 			service = &corev1.Service{
 				ObjectMeta: metav1.ObjectMeta{
 					Namespace: elasticWeb.Namespace,
@@ -247,24 +248,24 @@ func createServiceIfNotExists(ctx context.Context, r *ElasticWebReconciler, elas
 			}
 
 			logger.Info("set reference")
-			if err := controllerutil.SetControllerReference(elasticWeb, service, r.Scheme); err != nil {
+			if err := controllerutil.SetControllerReference(elasticWeb, service, r.Scheme); err != nil {  // 建立关联关系
 				logger.Error(err, "SetControllerReference error")
 				return err
 			}
 
 			logger.Info("start create service")
-			if err := r.Create(ctx, service); err != nil {
+			if err := r.Create(ctx, service); err != nil { // 创建service
 				logger.Error(err, "create service error")
 				return err
 			}
 			logger.Info("create service success")
 			return nil
 		}
-		logger.Error(err, "query service error")
+		logger.Error(err, "query service error") // 如果不是没找service，而是其他错误，则上报
 		return err
 	}
 
-	logger.Info("service exists")
+	logger.Info("service exists") // 如果查询时没有错误，说明存在service就不用创建了
 	return nil
 }
 
