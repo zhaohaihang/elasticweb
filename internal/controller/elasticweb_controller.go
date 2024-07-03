@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -31,16 +32,15 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	elasticwebv1 "github.com/zhaohaihang/elasticweb/api/v1"
-	"github.com/zhaohaihang/elasticweb/internal/controller"
 )
 
 const (
-	APP_NAME = "elastic-app"
+	APP_NAME       = "elastic-app"
 	CONTAINER_PORT = 8080
-	CPU_REQUEST = "100m"
-	CPU_LIMIT = "100m"
-	MEM_REQUEST = "512Mi"
-	MEM_LIMIT = "512Mi"
+	CPU_REQUEST    = "100m"
+	CPU_LIMIT      = "100m"
+	MEM_REQUEST    = "512Mi"
+	MEM_LIMIT      = "512Mi"
 )
 
 var logger = log.Log.WithName("elasticweb")
@@ -71,53 +71,64 @@ func (r *ElasticWebReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	logger.Info("1. start reconcile logic")
 
 	elasticWeb := &elasticwebv1.ElasticWeb{}
-	if err := r.Get(ctx, req.NamespacedName, elasticWeb); err != nil{
+	if err := r.Get(ctx, req.NamespacedName, elasticWeb); err != nil {
 		if errors.IsNotFound(err) {
 			logger.Info("2.1. instance not found, maybe removed")
 			return ctrl.Result{}, nil
 		}
 		logger.Error(err, "2.2 error")
-		return ctrl.Result{},err
+		return ctrl.Result{}, err
 	}
 	logger.Info("3. instance : " + elasticWeb.String())
 
 	deployment := &appsv1.Deployment{}
-	err := r.Get(ctx,req.NamespacedName,deployment)
+	err := r.Get(ctx, req.NamespacedName, deployment)
 	if err != nil {
-		if errors.IsNotFound(err){  // 如果没找到 ，则需要创建
+		if errors.IsNotFound(err) { // 如果没找到 ，则需要创建
 			logger.Info("4. deployment not exists")
 			if elasticWeb.Spec.TotalQPS < 1 {
 				logger.Info("5.1 not need deployment")
 				return ctrl.Result{}, nil
 			}
-			// TO SERVICE
-			// todo deploymenty
-			// todo status
+
+			if err := createServiceIfNotExists(ctx, r, elasticWeb, req); err != nil {
+				logger.Error(err, "5.2 error")
+				return ctrl.Result{}, nil
+			}
+
+			if err := createDeployment(ctx, r, elasticWeb); err != nil {
+				logger.Error(err, "5.3 error")
+				return ctrl.Result{}, nil
+			}
+
+			if err := updateStatus(ctx, r, elasticWeb); err != nil {
+				logger.Error(err, "5.4 error")
+				return ctrl.Result{}, err
+			}
 			return ctrl.Result{}, nil
-		}else {   // 如果是其他错误，则要返回错误
+		} else {
 			logger.Error(err, "7. error")
 			return ctrl.Result{}, err
 		}
-	} 
+	}
 
 	expectReplicas := getExpectReplicas(elasticWeb)
 	realReplicas := deployment.Spec.Replicas
 	logger.Info("9. expectReplicas [%d], realReplicas [%d]", expectReplicas, realReplicas)
-	
+
 	if expectReplicas != *realReplicas {
 		logger.Info("11. update deployment's Replicas")
 		deployment.Spec.Replicas = &expectReplicas
-		if err := r.Update(ctx,deployment); err != nil {
+		if err := r.Update(ctx, deployment); err != nil {
 			return ctrl.Result{}, err
 		}
 
 		logger.Info("13. update status")
-		if err = updateStatus
-
+		if err := updateStatus(ctx, r, elasticWeb); err != nil {
+			logger.Error(err, "14. update status error")
+			return ctrl.Result{}, err
+		}
 	}
-
-
-
 
 	return ctrl.Result{}, nil
 }
@@ -132,26 +143,23 @@ func (r *ElasticWebReconciler) SetupWithManager(mgr ctrl.Manager) error {
 func getExpectReplicas(elasticWeb *elasticwebv1.ElasticWeb) int32 {
 	singleQPS := elasticWeb.Spec.SinglePodQPS
 	totalQPS := elasticWeb.Spec.TotalQPS
-	
-	replicas := totalQPS/singleQPS
+
+	replicas := totalQPS / singleQPS
 	if totalQPS%singleQPS > 0 {
-		replicas ++
+		replicas++
 	}
 	return replicas
 }
 
-
-
-func createDeployment(ctx *context.Context, r* ElasticWebReconciler,elasticWeb *elasticwebv1.ElasticWeb) error {
-	log := r.Log.WithValues("func","createDeployment")
+func createDeployment(ctx context.Context, r *ElasticWebReconciler, elasticWeb *elasticwebv1.ElasticWeb) error {
 
 	expectReplicas := getExpectReplicas(elasticWeb)
-	log.Info(fmt.Sprintf("expectReplicas [%d]", expectReplicas))
+	logger.Info(fmt.Sprintf("expectReplicas [%d]", expectReplicas))
 
 	deployment := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
-			Namespace : elasticWeb.Namespace,
-			Name : elasticWeb.Name,
+			Namespace: elasticWeb.Namespace,
+			Name:      elasticWeb.Name,
 		},
 		Spec: appsv1.DeploymentSpec{
 			Replicas: &expectReplicas,
@@ -169,61 +177,105 @@ func createDeployment(ctx *context.Context, r* ElasticWebReconciler,elasticWeb *
 				Spec: corev1.PodSpec{
 					Containers: []corev1.Container{
 						{
-							Name: APP_NAME,
-							Image: elasticWeb.Spec.Image,
+							Name:            APP_NAME,
+							Image:           elasticWeb.Spec.Image,
 							ImagePullPolicy: "IfNotPresent",
 							Ports: []corev1.ContainerPort{
 								{
-									Name: "http",
-									Protocol: corev1.ProtocolSCTP,
+									Name:          "http",
+									Protocol:      corev1.ProtocolSCTP,
 									ContainerPort: CONTAINER_PORT,
 								},
 							},
 							Resources: corev1.ResourceRequirements{
 								Requests: corev1.ResourceList{
-									"cpu": resource.MustParse(CPU_REQUEST),
+									"cpu":    resource.MustParse(CPU_REQUEST),
 									"memory": resource.MustParse(MEM_REQUEST),
 								},
 								Limits: corev1.ResourceList{
-									"cpu": resource.MustParse(CPU_LIMIT),
+									"cpu":    resource.MustParse(CPU_LIMIT),
 									"memory": resource.MustParse(MEM_LIMIT),
 								},
 							},
 						},
 					},
 				},
-
 			},
 		},
 	}
 
-	log.info("set reference")
+	logger.Info("set reference")
 	if err := controllerutil.SetControllerReference(elasticWeb, deployment, r.Scheme); err != nil {
-		log.Error(err, "SetControllerReference error")
+		logger.Error(err, "SetControllerReference error")
 		return err
 	}
 
-	log.Info("start create deployment")
+	logger.Info("start create deployment")
 	if err := r.Create(ctx, deployment); err != nil {
-		log.Error(err, "create deployment error")
+		logger.Error(err, "create deployment error")
 		return err
 	}
 
-	log.Info("create deployment success")
+	logger.Info("create deployment success")
 
 	return nil
-
 }
 
-func updateStatus(ctx *context.Context, r* ElasticWebReconciler,elasticWeb *elasticwebv1.ElasticWeb) {
-	log := r.Log.WithValues("func", "updateStatus")
+func createServiceIfNotExists(ctx context.Context, r *ElasticWebReconciler, elasticWeb *elasticwebv1.ElasticWeb, req ctrl.Request) error {
+
+	service := &corev1.Service{}
+	if err := r.Get(ctx, req.NamespacedName, service); err != nil {
+		if errors.IsNotFound(err) {
+			service = &corev1.Service{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: elasticWeb.Namespace,
+					Name:      elasticWeb.Name,
+				},
+				Spec: corev1.ServiceSpec{
+					Ports: []corev1.ServicePort{
+						{
+							Name:     "http",
+							Port:     8080,
+							NodePort: elasticWeb.Spec.Port,
+						},
+					},
+					Selector: map[string]string{
+						"app": APP_NAME,
+					},
+					Type: corev1.ServiceTypeNodePort,
+				},
+			}
+
+			logger.Info("set reference")
+			if err := controllerutil.SetControllerReference(elasticWeb, service, r.Scheme); err != nil {
+				logger.Error(err, "SetControllerReference error")
+				return err
+			}
+
+			logger.Info("start create service")
+			if err := r.Create(ctx, service); err != nil {
+				logger.Error(err, "create service error")
+				return err
+			}
+			logger.Info("create service success")
+			return nil
+		}
+		logger.Error(err, "query service error")
+		return err
+	}
+
+	logger.Info("service exists")
+	return nil
+}
+
+func updateStatus(ctx context.Context, r *ElasticWebReconciler, elasticWeb *elasticwebv1.ElasticWeb) error {
 	singlePodQPS := elasticWeb.Spec.SinglePodQPS
 	replicas := getExpectReplicas(elasticWeb)
 	elasticWeb.Status.RealQPS = singlePodQPS * replicas
-	log.Info(fmt.Sprintf("singlePodQPS [%d], replicas [%d], realQPS[%d]", singlePodQPS, replicas, *(elasticWeb.Status.RealQPS)))
+	logger.Info(fmt.Sprintf("singlePodQPS [%d], replicas [%d], realQPS[%d]", singlePodQPS, replicas, elasticWeb.Status.RealQPS))
 
-	if err := r.Update(*ctx,elasticWeb); err != nil {
-		log.Error(err, "update instance error")
+	if err := r.Update(ctx, elasticWeb); err != nil {
+		logger.Error(err, "update instance error")
 		return err
 	}
 	return nil
