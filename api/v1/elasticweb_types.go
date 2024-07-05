@@ -30,10 +30,10 @@ type ElasticWebSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	Image string `json:"image"`
-	Port int32 `json:"port"`
-	SinglePodQPS int32 `json:"singlePodQPS"`
-	TotalQPS int32 `json:"totalQPS"`
+	Image        string `json:"image"`
+	Port         int32  `json:"port"`
+	SinglePodQPS int32  `json:"singlePodQPS"`
+	TotalQPS     int32  `json:"totalQPS"`
 }
 
 // ElasticWebStatus defines the observed state of ElasticWeb
@@ -58,7 +58,7 @@ type ElasticWeb struct {
 
 func (e *ElasticWeb) String() string {
 	return fmt.Sprintf("Image [%s],port [%d],singleQPS[%d],totalQPS[%d],realQPS[%d]",
-e.Spec.Image,e.Spec.Port,e.Spec.SinglePodQPS,e.Spec.TotalQPS,e.Status.RealQPS)
+		e.Spec.Image, e.Spec.Port, e.Spec.SinglePodQPS, e.Spec.TotalQPS, e.Status.RealQPS)
 }
 
 // +kubebuilder:object:root=true

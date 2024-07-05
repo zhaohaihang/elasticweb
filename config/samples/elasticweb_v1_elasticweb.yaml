@@ -1,3 +1,10 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dev
+  labels:
+    name: dev
+---
 apiVersion: elasticweb.com.zhh/v1
 kind: ElasticWeb
 metadata:
@@ -5,5 +12,9 @@ metadata:
     app.kubernetes.io/name: elasticweb
     app.kubernetes.io/managed-by: kustomize
   name: elasticweb-sample
+  namespace: dev
 spec:
-  # TODO(user): Add fields here
+  image: nginx:1.7.9
+  port: 30003
+  singlePodQPS: 500
+  totalQPS: 600

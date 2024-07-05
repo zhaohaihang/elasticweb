@@ -83,10 +83,10 @@ func (r *ElasticWebReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 	deployment := &appsv1.Deployment{}
 	err := r.Get(ctx, req.NamespacedName, deployment)
-	if err != nil {  // 如果出错了，则处理不同的错误
+	if err != nil { // 如果出错了，则处理不同的错误
 		if errors.IsNotFound(err) { // 如果没找到 ，则需要创建
 			logger.Info("4. deployment not exists")
-			if elasticWeb.Spec.TotalQPS < 1 {  // 如果qps为0，说明没有请求，则不需要创建deployment
+			if elasticWeb.Spec.TotalQPS < 1 { // 如果qps为0，说明没有请求，则不需要创建deployment
 				logger.Info("5.1 not need deployment")
 				return ctrl.Result{}, nil
 			}
@@ -96,7 +96,7 @@ func (r *ElasticWebReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 				return ctrl.Result{}, nil
 			}
 
-			if err := createDeployment(ctx, r, elasticWeb); err != nil {  // 创建deployment
+			if err := createDeployment(ctx, r, elasticWeb); err != nil { // 创建deployment
 				logger.Error(err, "5.3 error")
 				return ctrl.Result{}, nil
 			}
@@ -106,7 +106,7 @@ func (r *ElasticWebReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 				return ctrl.Result{}, err
 			}
 			return ctrl.Result{}, nil
-		} else {  // 如果不是没找到，而是其他错误则返回错误
+		} else { // 如果不是没找到，而是其他错误则返回错误
 			logger.Error(err, "7. error")
 			return ctrl.Result{}, err
 		}
@@ -124,7 +124,7 @@ func (r *ElasticWebReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			return ctrl.Result{}, err
 		}
 
-		logger.Info("13. update status")  // 更新完deployment之后，更新elasticweb的状态，主要是更新其中的realQPS
+		logger.Info("13. update status") // 更新完deployment之后，更新elasticweb的状态，主要是更新其中的realQPS
 		if err := updateStatus(ctx, r, elasticWeb); err != nil {
 			logger.Error(err, "14. update status error")
 			return ctrl.Result{}, err
@@ -141,8 +141,7 @@ func (r *ElasticWebReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(r)
 }
 
-
-func getExpectReplicas(elasticWeb *elasticwebv1.ElasticWeb) int32 {  // 用于获取期望副本数量值
+func getExpectReplicas(elasticWeb *elasticwebv1.ElasticWeb) int32 { // 用于获取期望副本数量值
 	singleQPS := elasticWeb.Spec.SinglePodQPS
 	totalQPS := elasticWeb.Spec.TotalQPS
 
@@ -225,7 +224,7 @@ func createDeployment(ctx context.Context, r *ElasticWebReconciler, elasticWeb *
 
 func createServiceIfNotExists(ctx context.Context, r *ElasticWebReconciler, elasticWeb *elasticwebv1.ElasticWeb, req ctrl.Request) error {
 	service := &corev1.Service{}
-	if err := r.Get(ctx, req.NamespacedName, service); err != nil {  //查询时有错误，要处理
+	if err := r.Get(ctx, req.NamespacedName, service); err != nil { //查询时有错误，要处理
 		if errors.IsNotFound(err) { // 如果因为没找到sercvice报错，则需要创建service
 			service = &corev1.Service{
 				ObjectMeta: metav1.ObjectMeta{
@@ -248,7 +247,7 @@ func createServiceIfNotExists(ctx context.Context, r *ElasticWebReconciler, elas
 			}
 
 			logger.Info("set reference")
-			if err := controllerutil.SetControllerReference(elasticWeb, service, r.Scheme); err != nil {  // 建立关联关系
+			if err := controllerutil.SetControllerReference(elasticWeb, service, r.Scheme); err != nil { // 建立关联关系
 				logger.Error(err, "SetControllerReference error")
 				return err
 			}
