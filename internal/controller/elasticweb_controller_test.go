@@ -21,11 +21,11 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 
 	elasticwebv1 "github.com/zhaohaihang/elasticweb/api/v1"
 )
@@ -79,6 +79,32 @@ var _ = Describe("ElasticWeb Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 			// TODO(user): Add more specific assertions depending on your controller's reconciliation logic.
 			// Example: If you expect a certain status condition after reconciliation, verify it here.
+		})
+	})
+})
+
+var _ = Describe("ElasticWeb controller", func() {
+	Context("When updating ElasticWeb Status", func() {
+		It("Should Create ElasticWeb ", func() {
+			By("By creating a new ElasticWeb")
+			ctx := context.Background()
+			elasticWeb := &elasticwebv1.ElasticWeb{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "",
+					Kind:       "",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-elasticweb",
+					Namespace: "dev",
+				},
+				Spec: elasticwebv1.ElasticWebSpec{
+					Image:        "nginx:1.7.9",
+					Port:         8082,
+					SinglePodQPS: 400,
+					TotalQPS:     800,
+				},
+			}
+			Expect(k8sClient.Create(ctx, elasticWeb)).Should(Succeed())
 		})
 	})
 })
